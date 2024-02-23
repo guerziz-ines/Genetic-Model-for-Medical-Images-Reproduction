@@ -1,0 +1,295 @@
+import copy
+import random
+import pygame
+
+import tkinter as tk
+from tkinter import filedialog
+from PIL import ImageTk, Image
+import os
+
+# les paramètres de notre algorithme gènetique
+taille_population = 50
+nombre_maximum_generation = 200
+facteur_selection = 0.95
+taux_mutation = 0.001
+
+# fichier image d'entrèe
+window = tk.Tk()
+window.title("selection de fichier")
+window.geometry("+900+100")
+filename = filedialog.askopenfilename(initialdir=os.getcwd(
+), title="Select file", filetypes=(("jpg images", ".jpg"), ("png images", ".png"), ("tout les fichiers", "*.*")))
+
+# Creates a Tkinter-compatible photo image, which can be used everywhere Tkinter expects an image object.
+img = ImageTk.PhotoImage(Image.open(filename))
+
+# The Label widget is a standard Tkinter widget used to display a text or image on the screen.
+panel = tk.Label(window, image=img)
+
+# The Pack geometry manager packs widgets in rows or columns.
+panel.pack(side="bottom", fill="both", expand="yes")
+
+image_original = Image.open(filename)
+taille_x = image_original.size[0]
+taille_y = image_original.size[1]
+nombre_maximum_iteration_du_dessin = 8
+
+# lancer le canvas ici
+pygame.init()
+affichage_fenetre_progression = pygame.display.set_mode((taille_x, taille_y))
+pygame.display.set_caption('Fenetre de Reconstruction')
+panel.pack(side="bottom", fill="both", expand="yes")
+
+# Start the GUI
+window.mainloop()
+
+
+# Définition de variable individuelle GA
+class Individu:
+    def __init__(self, variables_modeles):
+        self.variables_modeles = variables_modeles
+        ##############################################################################################
+        self.fitness = -1
+        ##############################################################################################
+
+
+# Calculer la valeur de la fonction de depense
+def depense(valeur, valeur_cible):
+    valeur_depense = 0
+    for _ in range(len(valeur_cible)):
+        valeur_depense += (valeur[_] - valeur_cible[_]) ** 2
+    return valeur_depense
+
+
+# Les variables initiales sont renseignées ici
+def population_init(long_variables, variables_init):
+    population = []
+    if variables_init:
+        population.append(Individu(variables_init))
+    for individu in range(taille_population - len(population)):
+        variables_modeles = []
+        for _ in range(long_variables):
+            variables_modeles.append(random.randint(0, 255))
+        population.append(Individu(variables_modeles))
+    return population
+
+
+# C'est la fonction principale
+def run_ga():
+    surface = pygame.display.get_surface()
+    i_count = 0
+    n_sections = [1]
+
+    while n_sections[len(n_sections) - 1] < taille_x:  #
+        n_sections.append(n_sections[len(n_sections) - 1] * 2)
+
+    for n_iter in range(0, len(n_sections)):
+        opt_count = 0
+        n_section = n_sections[n_iter]
+        print('Iteration: ' + str(i_count))
+
+        surface_temp = pygame.display.get_surface()
+        surface_temp.fill((0, 0, 0))
+
+        a = 0
+        somme = 0
+        for n in range(n_section):
+            for m in range(n_section):
+                section_long_x = float(taille_x / n_section)
+                section_long_y = float(taille_y / n_section)
+                somme_r_original = 0
+                somme_g_original = 0
+                somme_b_original = 0
+                count = 0
+
+                # Déterminez la somme de chaque valeur de canal de couleur de l'image originale dans la zone sélectionnée
+                for i in range(int(section_long_x)):
+                    for j in range(int(section_long_y)):
+                        somme_r_original += \
+                            image_original.getpixel((int(n * section_long_x + i), int(m * section_long_y + j)))[0]
+                        somme_g_original += \
+                            image_original.getpixel((int(n * section_long_x + i), int(m * section_long_y + j)))[1]
+                        somme_b_original += \
+                            image_original.getpixel((int(n * section_long_x + i), int(m * section_long_y + j)))[2]
+                        count += 1
+
+                # Déterminer les valeurs RGB moyennes ajoutées avec une variation aléatoire
+
+                avg_r_original = int(somme_r_original / count) + random.randrange(
+                    -min(int(somme_r_original / count), 30),
+                    min(256 - int(somme_r_original / count),
+                        30))
+                avg_g_original = int(somme_g_original / count) + random.randrange(
+                    -min(int(somme_g_original / count), 30),
+                    min(256 - int(somme_g_original / count),
+                        30))
+                avg_b_original = int(somme_b_original / count) + random.randrange(
+                    -min(int(somme_b_original / count), 30),
+                    min(256 - int(somme_b_original / count),
+                        30))
+
+                # Obtenir les valeurs RGB actuelles dans le canevas en tant que valeurs initiales pour la GA
+                variables_init = [0, 0, 0]
+                variables_init[0] = surface.get_at((int(n * section_long_x), int(m * section_long_y)))[0]
+                variables_init[1] = surface.get_at((int(n * section_long_x), int(m * section_long_y)))[1]
+                variables_init[2] = surface.get_at((int(n * section_long_x), int(m * section_long_y)))[2]
+
+                # Start GA using the initial rgb values
+                valeur_cible = [avg_r_original, avg_g_original, avg_b_original]
+
+                individu_optimal = ga(valeur_cible, variables_init)
+
+                #print("finalllll",individu_optimal.fitness)
+
+                r = individu_optimal.variables_modeles[0]
+                g = individu_optimal.variables_modeles[1]
+                b = individu_optimal.variables_modeles[2]
+
+                # Calculer la valeur aleatoire
+                random_val = int(
+                    random.uniform(-int(int(2 * section_long_x / 3) / 2), + int(int(2 * section_long_x / 3) / 2)))
+
+                #dessiner les carrés
+                DISPLAY = surface_temp
+                pygame.draw.rect(DISPLAY, (r, g, b), (int(n * section_long_x) + int(section_long_x / 2) + random_val,
+                                                      int(m * section_long_y) + int(section_long_y / 2) + random_val,
+                                                      int(4 * section_long_x / 3) + random_val,
+                                                      int(4 * section_long_x / 3) + random_val))
+
+                # mettre à jour l'affichage
+                pygame.display.update()
+                somme += individu_optimal.fitness
+                opt_count += 1
+
+       # print(individu_optimal.fitness/opt_count)
+        surface = surface_temp
+        # Enregistrer le canevas actuel
+        pygame.image.save(affichage_fenetre_progression, str(i_count) + ".png")
+        print("fitnessss", (somme / opt_count))
+        i_count += 1
+        somme -= somme
+        window.mainloop()
+        if i_count > nombre_maximum_iteration_du_dessin:
+            break
+
+
+# Fonction d'algorithme génétique
+def ga(valeur_cible, variables_init):
+    n_variables = len(variables_init)
+    population = population_init(n_variables, variables_init)
+    meilleur_individu_recent = []
+    var = 0
+
+    for generation in range(nombre_maximum_generation):
+        population = get_generation_fitness(population, valeur_cible)
+        # for _ in range(len(population)):
+        #     var = population[_].fitness
+        # hh = var/len(population)
+        # print(hh)
+
+        #ss=get_meilleur_individu1(population)
+       # print(ss)
+        meilleur_individu = copy.deepcopy(get_meilleur_individu(population))
+      #  print("meillllllllll",meilleur_individu.fitness)
+
+
+        if meilleur_individu_recent:
+            if meilleur_individu.fitness <= meilleur_individu_recent.fitness:
+                meilleur_individu_recent = copy.deepcopy(get_meilleur_individu(population))
+
+            else:
+                population = update_population(population, meilleur_individu_recent)
+                meilleur_individu_recent = copy.deepcopy(get_meilleur_individu(population))
+
+        else:
+            meilleur_individu_recent = copy.deepcopy(get_meilleur_individu(population))
+
+        population = selection(population)
+        population = croisement(population)
+        population = mutation(population)
+
+        if meilleur_individu_recent.fitness == 0:
+
+            return meilleur_individu_recent
+    #print("meilleur individu",meilleur_individu_recent.fitness)
+    return meilleur_individu_recent
+
+
+
+# Mettre à jour la valeur de fitness de chaque individu de la population entière en une génération
+def get_generation_fitness(population, valeur_cible):
+    for _ in range(len(population)):
+        population[_].fitness = depense(population[_].variables_modeles, valeur_cible)
+
+    return population
+
+
+# Opération de sélection de GA
+def selection(population):
+    population = sorted(population, key=lambda individual: individual.fitness, reverse=False)
+    population = population[:int(facteur_selection * len(population))]
+    return population
+
+
+# operation de croisement de GA
+def croisement(population):
+    offspring = []
+    for _ in range((taille_population - len(population)) // 2):
+        parent1 = random.choice(population)
+        parent2 = random.choice(population)
+        split = random.random()
+        enfant1 = get_enfant(parent1, parent2, split)
+        enfant2 = get_enfant(parent1, parent2, (1.0 - split))
+        offspring.append(enfant1)
+        offspring.append(enfant2)
+    population.extend(offspring)
+    return population
+
+
+# Générer un enfant de deux parents
+def get_enfant(parent1, parent2, split):
+    variables_modeles = []
+    for i in range(len(parent1.variables_modeles)):
+        variables_modeles.append(
+            int(parent1.variables_modeles[i] * split) + int(parent2.variables_modeles[i] * (1.0 - split)))
+    enfant = Individu(variables_modeles)
+    return enfant
+
+
+# Opération de mutation de GA
+def mutation(population):
+    for individu in population:
+        variables_modeles = individu.variables_modeles
+        for _ in range(len(variables_modeles)):
+            if random.uniform(0.0, 1.0) <= taux_mutation:
+                individu.variables_modeles[_] = random.randint(0, 255)
+    return population
+
+
+# Obtenez le meilleur individu d'une population en GA
+def get_meilleur_individu(population):
+    population = sorted(population, key=lambda individual: individual.fitness, reverse=False)
+    return population[0]
+def get_meilleur_individu1(population):
+    population = sorted(population, key=lambda individual: individual.fitness, reverse=False)
+    for _ in range(len(population)):
+        var = population[_].fitness
+        return var
+
+
+# Mettre à jour la population pour confirmer avoir le meilleur précédent au cas où le meilleur actuel ne serait pas meilleur que le précédent
+def update_population(population, meilleur_individu_recent):
+    population = sorted(population, key=lambda individual: individual.fitness, reverse=False)
+    if population[0].fitness > meilleur_individu_recent.fitness:
+        population = elements_remplacee(population, meilleur_individu_recent, [len(population) - 1])
+        population = sorted(population, key=lambda individual: individual.fitness, reverse=False)
+    return population
+
+
+# Remplacement individu dans une population
+def elements_remplacee(lst, new_element, indices):
+    return [new_element if i in indices else element for i, element in enumerate(lst)]
+
+
+if __name__ == '__main__':
+    run_ga()
